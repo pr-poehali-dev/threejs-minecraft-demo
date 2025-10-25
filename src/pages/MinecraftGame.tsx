@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { Card } from '@/components/ui/card';
 import Icon from '@/components/ui/icon';
 
-const CHUNK_SIZE = 16;
-const RENDER_DISTANCE = 4;
+const CHUNK_SIZE = 12;
+const RENDER_DISTANCE = 3;
 const BLOCK_SIZE = 1;
 
 interface Block {
@@ -47,9 +47,13 @@ const MinecraftGame = () => {
     );
     camera.position.set(8, 15, 8);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: false,
+      powerPreference: 'high-performance'
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = false;
     canvasRef.current.appendChild(renderer.domElement);
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -57,11 +61,6 @@ const MinecraftGame = () => {
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(50, 50, 50);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.camera.left = -50;
-    directionalLight.shadow.camera.right = 50;
-    directionalLight.shadow.camera.top = 50;
-    directionalLight.shadow.camera.bottom = -50;
     scene.add(directionalLight);
 
     const noise = (x: number, z: number): number => {
@@ -79,30 +78,39 @@ const MinecraftGame = () => {
     };
 
     const blockGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-    const blocks: THREE.Mesh[] = [];
 
+    const createMergedChunk = (cx: number, cz: number) => {
+      const geometries: THREE.BufferGeometry[] = [];
+      
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
+          const worldX = cx * CHUNK_SIZE + x;
+          const worldZ = cz * CHUNK_SIZE + z;
+          const height = Math.floor(noise(worldX, worldZ) + 8);
+
+          const geo = blockGeometry.clone();
+          geo.translate(worldX, height, worldZ);
+          geometries.push(geo);
+        }
+      }
+
+      const mergedGeometry = new THREE.BufferGeometry();
+      if (geometries.length > 0) {
+        const merged = THREE.BufferGeometryUtils?.mergeGeometries ? 
+          THREE.BufferGeometryUtils.mergeGeometries(geometries) : 
+          geometries[0];
+        return merged;
+      }
+      return mergedGeometry;
+    };
+
+    const chunks: THREE.Mesh[] = [];
     for (let cx = -RENDER_DISTANCE; cx < RENDER_DISTANCE; cx++) {
       for (let cz = -RENDER_DISTANCE; cz < RENDER_DISTANCE; cz++) {
-        for (let x = 0; x < CHUNK_SIZE; x++) {
-          for (let z = 0; z < CHUNK_SIZE; z++) {
-            const worldX = cx * CHUNK_SIZE + x;
-            const worldZ = cz * CHUNK_SIZE + z;
-            const height = Math.floor(noise(worldX, worldZ) + 8);
-
-            for (let y = 0; y <= height; y++) {
-              let material = blockMaterials.stone;
-              if (y === height) material = blockMaterials.grass;
-              else if (y > height - 3) material = blockMaterials.dirt;
-
-              const block = new THREE.Mesh(blockGeometry, material);
-              block.position.set(worldX, y, worldZ);
-              block.castShadow = true;
-              block.receiveShadow = true;
-              scene.add(block);
-              blocks.push(block);
-            }
-          }
-        }
+        const chunkGeometry = createMergedChunk(cx, cz);
+        const chunkMesh = new THREE.Mesh(chunkGeometry, blockMaterials.grass);
+        scene.add(chunkMesh);
+        chunks.push(chunkMesh);
       }
     }
 
