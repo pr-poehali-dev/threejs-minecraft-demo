@@ -80,6 +80,11 @@ const MinecraftGame = () => {
 
     const blockGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
 
+    const chunkMap = new Map<string, THREE.Mesh>();
+    const RENDER_RADIUS = RENDER_DISTANCE * CHUNK_SIZE;
+
+    const getChunkKey = (cx: number, cz: number) => `${cx},${cz}`;
+
     const createMergedChunk = (cx: number, cz: number) => {
       const geometries: THREE.BufferGeometry[] = [];
       
@@ -105,15 +110,45 @@ const MinecraftGame = () => {
       return mergedGeometry;
     };
 
-    const chunks: THREE.Mesh[] = [];
-    for (let cx = -RENDER_DISTANCE; cx < RENDER_DISTANCE; cx++) {
-      for (let cz = -RENDER_DISTANCE; cz < RENDER_DISTANCE; cz++) {
-        const chunkGeometry = createMergedChunk(cx, cz);
-        const chunkMesh = new THREE.Mesh(chunkGeometry, blockMaterials.grass);
-        scene.add(chunkMesh);
-        chunks.push(chunkMesh);
+    const updateChunks = () => {
+      const playerChunkX = Math.floor(camera.position.x / CHUNK_SIZE);
+      const playerChunkZ = Math.floor(camera.position.z / CHUNK_SIZE);
+
+      const visibleChunks = new Set<string>();
+
+      for (let cx = playerChunkX - RENDER_DISTANCE; cx <= playerChunkX + RENDER_DISTANCE; cx++) {
+        for (let cz = playerChunkZ - RENDER_DISTANCE; cz <= playerChunkZ + RENDER_DISTANCE; cz++) {
+          const chunkCenterX = cx * CHUNK_SIZE + CHUNK_SIZE / 2;
+          const chunkCenterZ = cz * CHUNK_SIZE + CHUNK_SIZE / 2;
+          const distanceToPlayer = Math.sqrt(
+            Math.pow(chunkCenterX - camera.position.x, 2) +
+            Math.pow(chunkCenterZ - camera.position.z, 2)
+          );
+
+          if (distanceToPlayer <= RENDER_RADIUS) {
+            const key = getChunkKey(cx, cz);
+            visibleChunks.add(key);
+
+            if (!chunkMap.has(key)) {
+              const chunkGeometry = createMergedChunk(cx, cz);
+              const chunkMesh = new THREE.Mesh(chunkGeometry, blockMaterials.grass);
+              scene.add(chunkMesh);
+              chunkMap.set(key, chunkMesh);
+            }
+          }
+        }
       }
-    }
+
+      chunkMap.forEach((mesh, key) => {
+        if (!visibleChunks.has(key)) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          chunkMap.delete(key);
+        }
+      });
+    };
+
+    updateChunks();
 
     const armGroup = new THREE.Group();
     const armGeometry = new THREE.BoxGeometry(0.3, 0.8, 0.3);
@@ -157,10 +192,8 @@ const MinecraftGame = () => {
       pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
     };
 
-    const handleClick = () => {
-      if (!isPointerLocked) {
-        renderer.domElement.requestPointerLock();
-      }
+    const handleStartGame = () => {
+      renderer.domElement.requestPointerLock();
     };
 
     const handlePointerLockChange = () => {
@@ -190,8 +223,9 @@ const MinecraftGame = () => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
-    renderer.domElement.addEventListener('click', handleClick);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
+
+    (window as any).startGame = handleStartGame;
 
     let lastTime = performance.now();
     let frameCount = 0;
@@ -256,6 +290,8 @@ const MinecraftGame = () => {
       armGroup.rotation.x = Math.sin(armSwing) * 0.3;
       armGroup.rotation.z = Math.sin(armSwing * 0.5) * 0.1;
 
+      updateChunks();
+
       renderer.render(scene, camera);
     };
 
@@ -273,8 +309,15 @@ const MinecraftGame = () => {
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('click', handleClick);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      delete (window as any).startGame;
+      
+      chunkMap.forEach((mesh) => {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+      });
+      chunkMap.clear();
+      
       canvasRef.current?.removeChild(renderer.domElement);
     };
   }, [isPointerLocked]);
@@ -341,7 +384,10 @@ const MinecraftGame = () => {
                 <span>1-9 — выбор предмета</span>
               </p>
             </div>
-            <button className="mt-4 px-6 py-3 bg-white/20 hover:bg-white/30 border border-white/50 rounded text-xl font-bold transition-all">
+            <button 
+              onClick={() => (window as any).startGame?.()}
+              className="mt-4 px-6 py-3 bg-white/20 hover:bg-white/30 border border-white/50 rounded text-xl font-bold transition-all"
+            >
               Нажми для старта
             </button>
           </Card>
