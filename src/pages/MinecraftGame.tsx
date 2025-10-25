@@ -19,6 +19,7 @@ const MinecraftGame = () => {
   const [health, setHealth] = useState(10);
   const [selectedSlot, setSelectedSlot] = useState(0);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
+  const [fps, setFps] = useState(0);
   
   const inventory = [
     { id: 0, name: 'Grass', icon: '🟩' },
@@ -192,8 +193,24 @@ const MinecraftGame = () => {
     renderer.domElement.addEventListener('click', handleClick);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
 
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fpsUpdateTime = 0;
+
     const animate = () => {
       requestAnimationFrame(animate);
+      
+      const currentTime = performance.now();
+      frameCount++;
+      fpsUpdateTime += currentTime - lastTime;
+      
+      if (fpsUpdateTime >= 500) {
+        setFps(Math.round((frameCount * 1000) / fpsUpdateTime));
+        frameCount = 0;
+        fpsUpdateTime = 0;
+      }
+      lastTime = currentTime;
+      
       updateGamepad();
 
       direction.set(0, 0, 0);
@@ -268,6 +285,12 @@ const MinecraftGame = () => {
       
       <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20 font-mono">
         MINECRAFT DEMO v1.0
+      </div>
+
+      <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1.5 rounded backdrop-blur-sm border border-white/20 font-mono text-sm">
+        <span className={fps >= 50 ? 'text-green-400' : fps >= 30 ? 'text-yellow-400' : 'text-red-400'}>
+          {fps} FPS
+        </span>
       </div>
 
       <div className="absolute top-4 left-4 flex gap-1">
